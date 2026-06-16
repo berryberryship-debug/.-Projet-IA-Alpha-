@@ -1,0 +1,86 @@
+import json
+import datetime
+import os
+import shutil
+
+class ArchiveCV:
+    """
+    Gestionnaire d'archives pour fichiers CV avec versionnage et persistance.
+    """
+    def __init__(self, auteur, manifeste_file="manifeste.json"):
+        self.auteur = auteur
+        self.manifeste_file = manifeste_file
+        self.date_creation = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.versions = []
+        
+        # Chargement automatique si le fichier existe
+        self.charger_manifeste()
+
+    def charger_manifeste(self):
+        """Charge l'historique depuis le fichier JSON s'il existe."""
+        if os.path.exists(self.manifeste_file):
+            try:
+                with open(self.manifeste_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    self.auteur = data.get("auteur", self.auteur)
+                    self.date_creation = data.get("date_creation", self.date_creation)
+                    self.versions = data.get("historique", [])
+                print(f"Archive chargée avec succès depuis '{self.manifeste_file}'.")
+            except (json.JSONDecodeError, KeyError) as e:
+                print(f"Erreur lors du chargement du manifeste : {e}")
+
+    def ajouter_version(self, nouvelle_version, commentaires, chemin_fichier_source):
+        """Ajoute une version unique et sécurisée au corpus."""
+        # 1. Validation d'unicité
+        if any(v['version'] == nouvelle_version for v in self.versions):
+            print(f"Erreur : La version '{nouvelle_version}' existe déjà.")
+            return
+
+        # 2. Validation du fichier source
+        if not os.path.exists(chemin_fichier_source):
+            print(f"Erreur : Fichier '{chemin_fichier_source}' introuvable.")
+            return
+
+        # 3. Préparation du dossier de stockage
+        dossier_archive = "corpus_cv"
+        os.makedirs(dossier_archive, exist_ok=True)
+        
+        # 4. Copie physique avec conservation des métadonnées
+        extension = os.path.splitext(chemin_fichier_source)[1]
+        nom_fichier = f"cv_{nouvelle_version}{extension}"
+        destination = os.path.join(dossier_archive, nom_fichier)
+        shutil.copy2(chemin_fichier_source, destination)
+        
+        # 5. Mise à jour de l'index
+        self.versions.append({
+            "version": nouvelle_version,
+            "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "commentaires": commentaires,
+            "fichier": destination
+        })
+        print(f"Version {nouvelle_version} archivée.")
+
+    def restaurer_version(self, version_cible, destination_extraction="."):
+        """Copie un fichier spécifique depuis le corpus vers un dossier cible."""
+        version_data = next((v for v in self.versions if v["version"] == version_cible), None)
+        if not version_data:
+            print(f"Erreur : Version {version_cible} introuvable.")
+            return
+
+        source = version_data["fichier"]
+        if os.path.exists(source):
+            shutil.copy2(source, destination_extraction)
+            print(f"Version {version_cible} restaurée dans '{destination_extraction}'.")
+        else:
+            print(f"Erreur : Fichier physique introuvable.")
+
+    def sauvegarder_manifeste_json(self):
+        """Sauvegarde les informations dans le fichier JSON."""
+        data = {
+            "auteur": self.auteur, 
+            "date_creation": self.date_creation, 
+            "historique": self.versions
+        }
+        with open(self.manifeste_file, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=4, ensure_ascii=False)
+        print(f"Manifeste sauvegardé dans {self.manifeste_file}")
